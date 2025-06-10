@@ -4,7 +4,7 @@
 namespace WonderGame\EsUtility\Crontab;
 
 use Cron\CronExpression;
-use EasySwoole\EasySwoole\Crontab\AbstractCronTask;
+use EasySwoole\Crontab\JobInterface;
 use EasySwoole\EasySwoole\Task\TaskManager;
 use EasySwoole\EasySwoole\Trigger;
 use EasySwoole\Task\AbstractInterface\TaskInterface;
@@ -13,22 +13,22 @@ use WonderGame\EsUtility\Crontab\Driver\Interfaces;
 use WonderGame\EsUtility\Crontab\Driver\Mysql;
 use WonderGame\EsUtility\Task\Crontab as CrontabTemplate;
 
-class Crontab extends AbstractCronTask
+class Crontab implements JobInterface
 {
     protected $tableName = 'crontab';
 
-    public static function getRule(): string
+    public function crontabRule(): string
     {
         return '* * * * *';
     }
 
-    public static function getTaskName(): string
+    public function jobName(): string
     {
         $arr = explode('\\', static::class);
         return end($arr);
     }
 
-    public function onException(\Throwable $throwable, int $taskId, int $workerIndex)
+    public function onException(\Throwable $throwable)
     {
         Trigger::getInstance()->throwable($throwable);
         return '执行失败： ' . __CLASS__;
@@ -48,7 +48,7 @@ class Crontab extends AbstractCronTask
         notice($text);
     }
 
-    public function run(int $taskId, int $workerIndex)
+    public function run()
     {
         $config = config('CRONTAB');
         $Drive = $this->driver($config['driver']);
