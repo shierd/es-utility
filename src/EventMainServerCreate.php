@@ -3,7 +3,6 @@
 namespace WonderGame\EsUtility;
 
 use EasySwoole\Command\Color;
-use EasySwoole\Component\AtomicManager;
 use EasySwoole\EasySwoole\Command\Utility;
 use EasySwoole\EasySwoole\ServerManager;
 use EasySwoole\EasySwoole\Swoole\EventRegister;
@@ -125,7 +124,6 @@ class EventMainServerCreate extends SplBean
     protected function registerCrontab()
     {
         if (is_array($this->crontabRunEnv) && class_exists($this->crontabClass) && is_env($this->crontabRunEnv)) {
-            config('crontab_delivery') && AtomicManager::getInstance()->add($this->crontabClass::KEY_CRONTAB_DELIVERY_TIMEOUT);
             $Crontab = \EasySwoole\EasySwoole\Crontab\Crontab::getInstance();
             $Crontab->addTask($this->crontabClass);
         }
