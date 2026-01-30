@@ -2,6 +2,7 @@
 
 namespace WonderGame\EsUtility\Validate;
 
+use EasySwoole\Http\Request;
 use EasySwoole\Validate\Validate;
 use EasySwoole\Validate\Exception\Runtime;
 use WonderGame\EsUtility\Common\Exception\HttpParamException;
@@ -15,6 +16,12 @@ trait BaseValidateTrait
      */
     protected $validateIns;
 
+    /**
+     * Request 对象
+     * @var Request
+     */
+    protected $request;
+
     public function __construct()
     {
         $this->validateIns = new Validate();
@@ -22,15 +29,26 @@ trait BaseValidateTrait
 
     /**
      * 根据预定义场景规则创建验证器
+     * @param Request $request
      * @param string $scene 场景
      * @return static
      */
-    public static function create($scene = '')
+    public static function create(?Request $request = null, $scene = '')
     {
-        $ins = new static();
+        $ins = new static($request);
+        $ins->setRequest($request);
+        if (empty($scene)) {
+            $target = $request->getRequestTarget();
+            $scene = substr($target, strrpos($target, '/') + 1);
+        }
         $ins->loadRule($scene);
 
         return $ins;
+    }
+
+    public function setRequest(Request $request)
+    {
+        $this->request = $request;
     }
 
     /**
