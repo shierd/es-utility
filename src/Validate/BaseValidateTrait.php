@@ -38,7 +38,7 @@ trait BaseValidateTrait
         $ins = new static($request);
         $ins->setRequest($request);
         if (empty($scene)) {
-            $target = $request->getRequestTarget();
+            $target = $request->getUri()->getPath();
             $scene = substr($target, strrpos($target, '/') + 1);
         }
         $ins->loadRule($scene);
