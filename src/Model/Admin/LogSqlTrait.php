@@ -36,7 +36,7 @@ trait LogSqlTrait
         $data = [
             'admid' => $operinfo['id'] ?? 0,
             'content' => $sql,
-            'ip' => ip($Ctx->request)
+            'ip' => $Ctx->request ? ip($Ctx->request) : ($operinfo['ip'] ?? '')
         ];
 
         $this->data($data)->save();
