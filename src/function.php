@@ -294,21 +294,68 @@ if ( ! function_exists('array_sort_multi')) {
     /**
      * 二维数组按某字段排序
      */
-    function array_sort_multi($data = [], $field = '', $direction = SORT_DESC, $fmt = true, $filterCols = [])
+    function array_sort_multi($data = [], $fields = '', $directions = SORT_DESC, $fmt = true, $filterCols = [], $customFn = null)
     {
-        if ( ! $data) return [];
-        $arrsort = [];
+        if (empty($data)) {
+            return [];
+        }
+
+        // 处理单字段情况（兼容旧版）
+        if ( ! is_array($fields)) {
+            $fields = [$fields];
+            $directions = [$directions];
+        } elseif ( ! is_array($directions)) {
+            // 如果方向不是数组，所有字段使用相同方向
+            $directions = array_fill(0, count($fields), $directions);
+        }
+
+        $sortColumns = [];
+        foreach ($fields as $index => $field) {
+            $sortColumns[$field] = [
+                'direction' => $directions[$index] ?? SORT_DESC,
+                'values' => []
+            ];
+        }
+
+        // 确保所有字段的 values 数组包含所有行
+        $uniqids = array_keys($data);
+        foreach ($sortColumns as &$column) {
+            $column['values'] = array_fill_keys($uniqids, null);
+        }
+        unset($column);
+
         foreach ($data as $uniqid => &$row) {
             foreach ($row as $key => &$value) {
-                $fmt && ! in_array($key, $filterCols) && $value = format_number($value, 2, true);
-                $arrsort[$key][$uniqid] = str_replace('%', '', $value);
+                // 格式化数字（保留原逻辑）
+                if ($fmt && ! in_array($key, $filterCols)) {
+                    $value = format_number($value, 2, true);
+                }
+
+                // 为排序字段准备数据（去掉%符号）
+                if (isset($sortColumns[$key])) {
+                    $val = $value;
+                    // 自定义排序
+                    if ($customFn && is_callable($customFn)) {
+                        $val = $customFn($key, $val);
+                    }
+                    $sortColumns[$key]['values'][$uniqid] = str_replace('%', '', $val);
+                }
             }
-            unset($value);
+            unset($value, $val);
         }
         unset($row);
-        if ($direction) {
-            array_multisort($arrsort[$field], $direction, $data);
+
+        // 准备 array_multisort 参数
+        $args = [];
+        foreach ($fields as $field) {
+            $args[] = $sortColumns[$field]['values'];
+            $args[] = $sortColumns[$field]['direction'];
         }
+        $args[] = &$data;
+
+        // 执行多字段排序
+        array_multisort(...$args);
+
         return $data;
     }
 }
@@ -353,7 +400,7 @@ if ( ! function_exists('listdate')) {
     function listdate($beginday, $endday, $type = 2, $format = 'Ymd', $keyfmt = 'ymd')
     {
         $type = is_numeric($type) ? (int)$type : $type;
-        $dif = difdate($beginday, $endday, ! ($type === 2 || $type === '%m' || $type === false));
+
         $arr = [];
         // 季
         if ($type === 3) {
@@ -385,12 +432,14 @@ if ( ! function_exists('listdate')) {
             } while ($by <= $arry[1]);
         } // 年
         elseif ($type === 4 || $type === '%y') {
+            $dif = difdate($beginday, $endday, '%y');
             $begintime = substr($beginday, 0, 4);
             for ($i = 0; $i <= $dif; ++$i) {
                 $arr[$begintime - 1] = $begintime . '0101'; // p2018=>strtotime(20190101)
                 ++$begintime;
             }
         } else {
+            $dif = difdate($beginday, $endday, ! ($type === 2 || $type === '%m' || $type === false));
             // 日期 p180302=>strtotime(20180303)
             if ($type === true || $type === 1 || $type === '%d') {
                 $unit = 'day';
@@ -644,183 +693,6 @@ if ( ! function_exists('array_to_std')) {
 }
 
 
-if ( ! function_exists('convertip')) {
-    /**
-     * 官方网站　 http://www.cz88.net　请适时更新ip库
-     * 按照ip地址返回所在地区
-     * @param string $ip ip地址  如果为空就使用当前请求ip
-     * @param string $ipdatafile DAT文件完整路径
-     * @return string 广东省广州市 电信  或者  - Unknown
-     *
-     */
-    function convertip($ip = '', $ipdatafile = '')
-    {
-        $ipdatafile = $ipdatafile ?: config('IPDAT_PATH');
-        $ip = $ip ?: ip();
-        if (empty($ip)) {
-            return '- Empty';
-        }
-        if (is_numeric($ip)) {
-            $ip = long2ip($ip);
-        }
-        if ( ! $fd = @fopen($ipdatafile, 'rb')) {
-            return '- Invalid IP data file';
-        }
-
-        $ip = explode('.', $ip);
-        $ipNum = $ip[0] * 16777216 + $ip[1] * 65536 + $ip[2] * 256 + $ip[3];
-
-        if ( ! ($DataBegin = fread($fd, 4)) || ! ($DataEnd = fread($fd, 4))) return '';
-        @$ipbegin = implode('', unpack('L', $DataBegin));
-        if ($ipbegin < 0) $ipbegin += pow(2, 32);
-        @$ipend = implode('', unpack('L', $DataEnd));
-        if ($ipend < 0) $ipend += pow(2, 32);
-        $ipAllNum = ($ipend - $ipbegin) / 7 + 1;
-
-        $BeginNum = $ip2num = $ip1num = 0;
-        $ipAddr1 = $ipAddr2 = '';
-        $EndNum = $ipAllNum;
-
-        while ($ip1num > $ipNum || $ip2num < $ipNum) {
-            $Middle = intval(($EndNum + $BeginNum) / 2);
-
-            fseek($fd, $ipbegin + 7 * $Middle);
-            $ipData1 = fread($fd, 4);
-            if (strlen($ipData1) < 4) {
-                fclose($fd);
-                return '- System Error';
-            }
-            $ip1num = implode('', unpack('L', $ipData1));
-            if ($ip1num < 0) $ip1num += pow(2, 32);
-
-            if ($ip1num > $ipNum) {
-                $EndNum = $Middle;
-                continue;
-            }
-
-            $DataSeek = fread($fd, 3);
-            if (strlen($DataSeek) < 3) {
-                fclose($fd);
-                return '- System Error';
-            }
-            $DataSeek = implode('', unpack('L', $DataSeek . chr(0)));
-            fseek($fd, $DataSeek);
-            $ipData2 = fread($fd, 4);
-            if (strlen($ipData2) < 4) {
-                fclose($fd);
-                return '- System Error';
-            }
-            $ip2num = implode('', unpack('L', $ipData2));
-            if ($ip2num < 0) $ip2num += pow(2, 32);
-
-            if ($ip2num < $ipNum) {
-                if ($Middle == $BeginNum) {
-                    fclose($fd);
-                    return '- Unknown';
-                }
-                $BeginNum = $Middle;
-            }
-        }
-
-        $ipFlag = fread($fd, 1);
-        if ($ipFlag == chr(1)) {
-            $ipSeek = fread($fd, 3);
-            if (strlen($ipSeek) < 3) {
-                fclose($fd);
-                return '- System Error';
-            }
-            $ipSeek = implode('', unpack('L', $ipSeek . chr(0)));
-            fseek($fd, $ipSeek);
-            $ipFlag = fread($fd, 1);
-        }
-
-        if ($ipFlag == chr(2)) {
-            $AddrSeek = fread($fd, 3);
-            if (strlen($AddrSeek) < 3) {
-                fclose($fd);
-                return '- System Error';
-            }
-            $ipFlag = fread($fd, 1);
-            if ($ipFlag == chr(2)) {
-                $AddrSeek2 = fread($fd, 3);
-                if (strlen($AddrSeek2) < 3) {
-                    fclose($fd);
-                    return '- System Error';
-                }
-                $AddrSeek2 = implode('', unpack('L', $AddrSeek2 . chr(0)));
-                fseek($fd, $AddrSeek2);
-            } else {
-                fseek($fd, -1, SEEK_CUR);
-            }
-
-            while (($char = fread($fd, 1)) != chr(0))
-                $ipAddr2 .= $char;
-
-            $AddrSeek = implode('', unpack('L', $AddrSeek . chr(0)));
-            fseek($fd, $AddrSeek);
-
-            while (($char = fread($fd, 1)) != chr(0))
-                $ipAddr1 .= $char;
-        } else {
-            fseek($fd, -1, SEEK_CUR);
-            while (($char = fread($fd, 1)) != chr(0))
-                $ipAddr1 .= $char;
-
-            $ipFlag = fread($fd, 1);
-            if ($ipFlag == chr(2)) {
-                $AddrSeek2 = fread($fd, 3);
-                if (strlen($AddrSeek2) < 3) {
-                    fclose($fd);
-                    return '- System Error';
-                }
-                $AddrSeek2 = implode('', unpack('L', $AddrSeek2 . chr(0)));
-                fseek($fd, $AddrSeek2);
-            } else {
-                fseek($fd, -1, SEEK_CUR);
-            }
-            while (($char = fread($fd, 1)) != chr(0))
-                $ipAddr2 .= $char;
-        }
-        fclose($fd);
-
-        if (preg_match('/http/i', $ipAddr2)) {
-            $ipAddr2 = '';
-        }
-        return iconv('GBK', 'UTF-8', "$ipAddr1 $ipAddr2");
-    }
-}
-
-
-if ( ! function_exists('area')) {
-    /**
-     * @param string $ip
-     * @param int|null $num 为数字时返回地区数组中的一个成员；否则返回整个数组
-     * @return array|string [国家, 地区, 网络商]  或者其中一个成员
-     */
-    function area($ip = '', $num = 'all')
-    {
-        $str = convertip($ip);
-        if (preg_match('/中国|北京市|上海市|天津市|重庆市|河北省|山西省|辽宁省|吉林省|黑龙江省|江苏省|浙江省|安徽省|福建省|江西省|山东省|河南省|湖北省|湖南省|广东省|海南省|四川省|贵州省|云南省|陕西省|甘肃省|青海省|台湾省|香港|澳门|内蒙古|广西|宁夏|新疆|西藏/', $str)) {
-            // 业务需求：非大陆需要单独记录
-            if (preg_match('/台湾|香港|澳门/', $str)) {
-                $str = '中国' . mb_substr(trim($str), 0, 2);
-            } else {
-                // 可根据业务需求，添加后缀字，例如大陆
-                $str = '中国' . config('INLAND') . " $str";
-            }
-        }
-        $arr = explode(' ', $str);
-        // 删除国家外的多余内容
-        foreach (['美国' => '美国', '加拿大' => '加拿大', '荷兰' => '荷兰', '法属' => '法国', '荷属' => '荷兰', '美属' => '美国', '德国' => '德国', '日本' => '日本', '俄罗斯' => '俄罗斯', '南非' => '南非', '欧洲' => '欧洲地区', '泰国' => '泰国', '英国' => '英国', '韩国' => '韩国'] as $k => $v) {
-            if (stripos($arr[0], $k) === 0) {
-                $arr[0] = $v;
-                break;
-            }
-        }
-
-        return is_numeric($num) ? $arr[$num] : $arr;
-    }
-}
 
 if ( ! function_exists('geo')) {
     /**
@@ -829,7 +701,10 @@ if ( ! function_exists('geo')) {
      * @github https://github.com/tagphi/czdb_searcher_php
      * @website https://cz88.net/
      * @param string $ip
-     * @param int|string $num 为数字时返回地区数组中的一个成员；否则返回整个数组
+     * @param int|string $num
+     *                      all：返回整个ip解析地址，数组格式
+     *                      isp：返回包含网络供应商的数组
+     *                      数字：返回ip解析地址中的指定索引成员
      * @return string|array
      */
     function geo($ip = '', $num = 'all')
@@ -875,6 +750,13 @@ if ( ! function_exists('geo')) {
             $arr = explode("\t", $region);
             // 业务需求，港澳台跟大陆一样保持在第一级
             $str = str_replace(['中国–台湾', '中国–香港', '中国–澳门', '中国–'], ['中国台湾–台湾', '中国香港–香港', '中国澳门–澳门', '中国' . config('INLAND') . '–'], $arr[0]);
+
+            // 支持返回isp网络供应商,注意必须全等，0 == 'isp' 结果为true
+            if ($num === 'isp') {
+                $arr[0] = $str;
+                return $arr;
+            }
+
             $arr = explode('–', $str);
 
             return is_numeric($num) ? $arr[$num] : $arr;
@@ -1193,15 +1075,18 @@ if ( ! function_exists('request_admin_api')) {
      * @param string $uri 地址
      * @param array $data 参数
      * @param string $method 请求方式
-     * @param string $encry 加密方式
+     * @param string $encry 加密方式  rsa或md5之类的
+     * @param array $headers 头信息
+     * @param string $notice 通知的主体（飞书|钉钉|……）标识
+     * @param array $cfg 其它配置值，最终会传给 HttpRequest::request内使用
      * @return array|bool
      */
-    function request_admin_api($uri, $data = [], $method = 'GET', $encry = 'rsa')
+    function request_admin_api($uri, $data = [], $method = 'GET', $encry = 'rsa', $headers = [], $notice = 'default', $cfg = [])
     {
         // 如果有其它逻辑处理，可在此单独写。甚至可在APP级别重写本函数
         // .....
 
-        return request_lan_api('admin', $uri, $data, $method, $encry);
+        return request_lan_api('admin', $uri, $data, $method, $encry, $headers, $notice, $cfg);
     }
 }
 
@@ -1211,15 +1096,18 @@ if ( ! function_exists('request_sdk_api')) {
      * @param string $uri 地址
      * @param array $data 参数
      * @param string $method 请求方式
-     * @param string $encry 加密方式
+     * @param string $encry 加密方式  rsa或md5之类的
+     * @param array $headers 头信息
+     * @param string $notice 通知的主体（飞书|钉钉|……）标识
+     * @param array $cfg 其它配置值，最终会传给 HttpRequest::request内使用
      * @return array|bool
      */
-    function request_sdk_api($uri, $data = [], $method = 'GET', $encry = 'md5')
+    function request_sdk_api($uri, $data = [], $method = 'GET', $encry = 'md5', $headers = [], $notice = 'default', $cfg = [])
     {
         // 如果有其它逻辑处理，可在此单独写。甚至可在APP级别重写本函数
         // .....
 
-        return request_lan_api('sdk', $uri, $data, $method, $encry);
+        return request_lan_api('sdk', $uri, $data, $method, $encry, $headers, $notice, $cfg);
     }
 }
 
@@ -1229,15 +1117,18 @@ if ( ! function_exists('request_log_api')) {
      * @param string $uri 地址
      * @param array $data 参数
      * @param string $method 请求方式
-     * @param string $encry 加密方式
+     * @param string $encry 加密方式  rsa或md5之类的
+     * @param array $headers 头信息
+     * @param string $notice 通知的主体（飞书|钉钉|……）标识
+     * @param array $cfg 其它配置值，最终会传给 HttpRequest::request内使用
      * @return array|bool
      */
-    function request_log_api($uri, $data = [], $method = 'GET', $encry = 'md5')
+    function request_log_api($uri, $data = [], $method = 'GET', $encry = 'md5', $headers = [], $notice = 'default', $cfg = [])
     {
         // 如果有其它逻辑处理，可在此单独写。甚至可在APP级别重写本函数
         // .....
 
-        return request_lan_api('log', $uri, $data, $method, $encry);
+        return request_lan_api('log', $uri, $data, $method, $encry, $headers, $notice, $cfg);
     }
 }
 
@@ -1247,15 +1138,18 @@ if ( ! function_exists('request_pay_api')) {
      * @param string $uri 地址
      * @param array $data 参数
      * @param string $method 请求方式
-     * @param string $encry 加密方式
+     * @param string $encry 加密方式  rsa或md5之类的
+     * @param array $headers 头信息
+     * @param string $notice 通知的主体（飞书|钉钉|……）标识
+     * @param array $cfg 其它配置值，最终会传给 HttpRequest::request内使用
      * @return array|bool
      */
-    function request_pay_api($uri, $data = [], $method = 'GET', $encry = 'md5')
+    function request_pay_api($uri, $data = [], $method = 'GET', $encry = 'md5', $headers = [], $notice = 'default', $cfg = [])
     {
         // 如果有其它逻辑处理，可在此单独写。甚至可在APP级别重写本函数
         // .....
 
-        return request_lan_api('pay', $uri, $data, $method, $encry);
+        return request_lan_api('pay', $uri, $data, $method, $encry, $headers, $notice, $cfg);
     }
 }
 
@@ -1267,14 +1161,34 @@ if ( ! function_exists('request_lan_api')) {
      * @param string $uri 地址
      * @param array $data 参数
      * @param string $method 请求方式
-     * @param string $encry 加密方式
+     * @param string $encry 加密方式  rsa或md5之类的
      * @param array $headers 头信息
      * @param string $notice 通知的主体（飞书|钉钉|……）标识
+     * @param array $cfg 其它配置值，最终会传给 HttpRequest::request内使用
      * @return array|bool
      */
-    function request_lan_api($lan_key, $uri, $data = [], $method = 'GET', $encry = 'md5', $headers = [], $notice = 'default')
+    function request_lan_api($lan_key, $uri, $data = [], $method = 'GET', $encry = 'md5', $headers = [], $notice = 'default', $cfg = [])
     {
         $method = strtoupper($method);
+        /**
+         * 配置的结构可参考如下： ip为服务器的内网IP（建议填固定的服务器，不受减服影响的那种），多组可实现类似负载的效果
+         {
+            "produce": {
+                 // 1. array：多个ip或域名，随机抽一个请求
+                 // 2. string: 直接请求
+                 // 3. 协议可带可不带，不带则默认http
+                 "ip": [
+                     "172.16.32.16",
+                     "172.16.32.17"
+                 ],
+                "domain": "inland-pay.xxx.xxx"
+             },
+             "test": {
+                 "ip": 'https://xxxx.xxx',
+                "domain": "test-inland-pay.xxx.xxx"
+             }
+         }
+         */
         $lan = sysinfo($lan_key . '_lan');
         $lan = $lan[get_mode()] ?? config(strtoupper($lan_key . '_lan'));
         if ( ! $lan) {
@@ -1307,17 +1221,28 @@ if ( ! function_exists('request_lan_api')) {
                 return false;
         }
 
-        $url = 'http://' . $lan['ip'][array_rand($lan['ip'])] . $uri;
+        // 支持字符串和数组配置
+        $lanIp = is_array($lan['ip']) ? ($lan['ip'][array_rand($lan['ip'])]) : $lan['ip'];
+        // 支持带协议
+        $url = is_http_protocol($lanIp) ? $lanIp : "http://{$lanIp}{$uri}";
+
+        $cfg = array_merge($cfg, [
+            'keyword' => $lan_key,
+            'retryCallback' => function ($code, $res, $org) {
+                return ($res['code'] ?? 0) == 200;
+            }
+        ]);
+
         try {
-            $res = hcurl($url, $params, $method, $headers += ['Host' => $lan['domain']], [
-                'keyword' => $lan_key,
-                'retryCallback' => function ($code, $res, $org) {
-                    return ($res['code'] ?? 0) == 200;
-                }]);
+            $res = hcurl($url, $params, $method, ['Host' => $lan['domain']] + $headers, $cfg);
             return $res['result'];
         } catch (\Exception $e) {
             notice($e->getMessage(), null, $notice);
-            return false;
+            if ($cfg['throw'] ?? true) {
+                throw $e;
+            } else {
+                return false;
+            }
         }
     }
 }
@@ -1719,6 +1644,18 @@ if ( ! function_exists('call_sms')) {
         $resp = hcurl($url, $params, 'json', ['token' => $config['token']], ['resultType' => '', 'retryTimes' => 0, 'throw' => false]);
         $level = $resp->getStatusCode() === 200 ? 'info' : 'error';
         trace("[call_sms]params=" . var_export($params, true) . ',resp=' . var_export($resp->getBody(), true), $level);
+    }
+}
+
+if ( ! function_exists('is_http_protocol')) {
+    /**
+     * 判断url是否http协议
+     * @param string $url
+     * @return bool
+     */
+    function is_http_protocol($url): bool
+    {
+        return strpos($url, 'http://') === 0 || strpos($url, 'https://') === 0;
     }
 }
 

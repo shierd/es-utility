@@ -11,6 +11,8 @@ use EasySwoole\Task\AbstractInterface\TaskInterface;
 use EasySwoole\Utility\File;
 use WonderGame\EsUtility\Crontab\Driver\Interfaces;
 use WonderGame\EsUtility\Crontab\Driver\Mysql;
+use WonderGame\EsUtility\Crontab\Listener\Listener;
+use WonderGame\EsUtility\Crontab\Listener\ListenerInterface;
 use WonderGame\EsUtility\Task\Crontab as CrontabTemplate;
 
 class Crontab implements JobInterface
@@ -36,7 +38,7 @@ class Crontab implements JobInterface
 
     public function throwable($row, string $message)
     {
-        trace($message, 'error');
+        trace($message . ', task status=' . json_encode(TaskManager::getInstance()->status()), 'error');
         $text = implode(" \n\n ", [
             '### **Crontab异常**',
             '- 服务器: ' . config('SERVNAME'),
@@ -53,6 +55,7 @@ class Crontab implements JobInterface
         $config = config('CRONTAB');
         $Drive = $this->driver($config['driver']);
         $backupFile = $config['backup'] ?: (config('LOG.dir') . '/crontab.data');
+        $Listener = $this->getListener($config['listener']);
 
         try {
             $list = $Drive->list();
@@ -110,6 +113,7 @@ class Crontab implements JobInterface
             $finish = $task->async($instance, function ($reply, $taskId, $workerIndex) use ($value) {
                 trace("[CRONTAB] SUCCESS id={$value['id']}, name={$value['name']}, reply={$reply}, workerIndex={$workerIndex}, taskid={$taskId}");
             });
+            $Listener->onTaskDeliveryFinish($value, $finish);
             // 运行一次
             $once = $config['status_once'] ?? 2;
             // 禁用状态
@@ -182,6 +186,24 @@ class Crontab implements JobInterface
         } else {
             trace("$className 异步任务模板未实现TaskInterface接口, 已使用默认模板", 'error');
             return new $dftTpl($row, $params);
+        }
+    }
+
+    protected function getListener($class): ListenerInterface
+    {
+        if (empty($class)) {
+            $class = Listener::class;
+        }
+
+        if (class_exists($class)) {
+            $Ref = new \ReflectionClass($class);
+            if ($Ref->implementsInterface(ListenerInterface::class)) {
+                return $Ref->newInstance();
+            } else {
+                throw new \Exception($class . ' Please implements ListenerInterface');
+            }
+        } else {
+            throw new \Exception("Class Not found: $class");
         }
     }
 }

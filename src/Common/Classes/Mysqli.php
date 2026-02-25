@@ -119,6 +119,11 @@ class Mysqli extends MysqliClient
         return $this->query($Builder, true);
     }
 
+    public function optimizeTable($tableName)
+    {
+        return $this->rawQuery("optimize table $tableName");
+    }
+
     /**
      * @param QueryBuilder $Builder
      * @param string | AbstractModel $modelName AbstractModel子类，否则为数组
@@ -166,7 +171,7 @@ class Mysqli extends MysqliClient
     {
         if (strpos($tzn, ':') === false) {
             $tznInt = intval($tzn);
-            $tzn = ($tznInt > 0 ? "+$tznInt" : $tznInt) . ':00';
+            $tzn = ($tznInt >= 0 ? "+$tznInt" : $tznInt) . ':00';
         }
 
         $this->rawQuery("set time_zone = '{$tzn}'");

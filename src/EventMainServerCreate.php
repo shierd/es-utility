@@ -142,6 +142,18 @@ class EventMainServerCreate extends SplBean
         $group = config('SERVER_NAME') . '.my.';
 
         foreach ($jobs as $value) {
+            // 要执行的服务器 []代表不限制
+            $server = $value['server'] ?? [];
+            if (
+                $server
+                &&
+                defined('SERVNUM')
+                && ! in_array(SERVNUM, (array)$server)
+            ) {
+                continue;
+            }
+
+            unset($server);
 
             $class = $value['class'];
             if (empty($class) || ! class_exists($class)) {
@@ -260,14 +272,17 @@ class EventMainServerCreate extends SplBean
             if ( ! is_array($val)) {
                 continue;
             }
-            /* @var \WonderGame\EsUtility\Notify\DingTalk\Config|\WonderGame\EsUtility\Notify\WeChat\Config|\WonderGame\EsUtility\Notify\Feishu\Config $cls */
-            $cls = '\\WonderGame\\EsUtility\\Notify\\' . ucfirst($key) . '\\Config';
+            $className = '\\WonderGame\\EsUtility\\Notify\\' . ucfirst($key) . '\\Config';
 
             foreach ($val as $k => $v) {
                 if ( ! is_array($v)) {
                     continue;
                 }
-                EsNotify::getInstance()->register(new $cls($v, true), $key, $k);
+                // 类不存在，则在进程启动时就提示。要么不传，传了就要传对
+                if (!class_exists($className)) {
+                    throw new \Exception("Class Not found: $className");
+                }
+                EsNotify::getInstance()->register(new $className($v, true), $key, $k);
             }
         }
     }
