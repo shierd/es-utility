@@ -60,8 +60,8 @@ trait BaseControllerTrait
         $this->get = $this->request()->getQueryParams();
 
         $post = $this->request()->getParsedBody();
-        if (empty($post)) {
-            $post = $this->json();
+        if ( ! empty($json = $this->json())) {
+            $post = $post + $json;
         }
         $this->post = is_array($post) ? $post : [];
         $this->input = array_merge($this->get, $this->post);
