@@ -66,6 +66,18 @@ return [
         // ... 其他api项目
     ],
 
+    'CLICKHOUSE' => [
+        'default' => [
+            'host' => 'dev_clickhouse',
+            'port' => 8123,
+            'username' => 'default',
+            'password' => 'dev_clickhouse',
+            'database' => 'default',
+            'timeout' => 10,
+            'connect_timeout' => 5,
+        ],
+    ],
+
     // 文件上传
     'UPLOAD' => [
         'dir' => EASYSWOOLE_ROOT . '/uploads',

@@ -44,7 +44,8 @@
     "ext-simplexml": "*",
     "ext-libxml": "*",
     "ext-curl": "*",
-    "tencentcloud/cdn": "^3.0"
+    "tencentcloud/cdn": "^3.0",
+    "smi2/phpclickhouse": "1.5.x"
   },
   "autoload": {
     "psr-4": {
