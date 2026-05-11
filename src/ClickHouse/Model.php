@@ -27,6 +27,8 @@ abstract class Model implements ArrayAccess, JsonSerializable
 
     protected $tableName = '';
 
+    protected $tableColumns = [];
+
     protected $pk = 'id';
 
     protected $data = [];
@@ -69,11 +71,7 @@ abstract class Model implements ArrayAccess, JsonSerializable
             return static::$clients[$this->connectionName];
         }
 
-        $config = function_exists('config') ? (config('CLICKHOUSE.' . $this->connectionName) ?: []) : [];
-        if (!$config && $this->connectionName === 'default' && function_exists('config')) {
-            $rootConfig = config('CLICKHOUSE') ?: [];
-            $config = isset($rootConfig['host']) ? $rootConfig : [];
-        }
+        $config = $this->getConnectionConfig();
         if (!$config) {
             throw new \RuntimeException("ClickHouse config not found: CLICKHOUSE.{$this->connectionName}");
         }
@@ -107,6 +105,50 @@ abstract class Model implements ArrayAccess, JsonSerializable
     public function getTableName()
     {
         return $this->tableName();
+    }
+
+    public function getColumns()
+    {
+        [$database, $table] = $this->parseDatabaseTable($this->tableName(), $this->getDatabase());
+
+        $sql = 'SELECT name FROM system.columns'
+            . ' WHERE `table` = ' . $this->quoteValue($table)
+            . ' AND `database` = ' . $this->quoteValue($database)
+            . " AND `default_kind` != 'MATERIALIZED'"
+            . ' ORDER BY `position` ASC';
+
+        $this->lastSql = $sql;
+        $this->traceSql($sql);
+
+        return array_column($this->getClient()->select($sql)->rows(), 'name');
+    }
+
+    public function getTableColumns()
+    {
+        if (empty($this->tableColumns)) {
+            $this->tableColumns = $this->getColumns();
+        }
+
+        return $this->tableColumns;
+    }
+
+    public function getDatabase()
+    {
+        [$database,] = $this->parseDatabaseTable($this->tableName(), '');
+        if ($database) {
+            return $database;
+        }
+
+        $config = $this->getConnectionConfig();
+        if (!empty($config['database'])) {
+            return $config['database'];
+        }
+
+        $sql = 'SELECT currentDatabase() AS database';
+        $this->lastSql = $sql;
+        $this->traceSql($sql);
+        $row = $this->getClient()->select($sql)->fetchOne();
+        return $row['database'] ?? '';
     }
 
     public function getPk()
@@ -450,6 +492,32 @@ abstract class Model implements ArrayAccess, JsonSerializable
         }
 
         return trim($sql, ', ');
+    }
+
+    protected function getConnectionConfig()
+    {
+        if (!function_exists('config')) {
+            return [];
+        }
+
+        $config = config('CLICKHOUSE.' . $this->connectionName) ?: [];
+        if (!$config && $this->connectionName === 'default') {
+            $rootConfig = config('CLICKHOUSE') ?: [];
+            $config = isset($rootConfig['host']) ? $rootConfig : [];
+        }
+
+        return is_array($config) ? $config : [];
+    }
+
+    protected function parseDatabaseTable($table, $defaultDatabase = '')
+    {
+        $table = trim($table, '`');
+        if (strpos($table, '.') === false) {
+            return [$defaultDatabase, $table];
+        }
+
+        [$database, $table] = explode('.', $table, 2);
+        return [trim($database, '`'), trim($table, '`')];
     }
 
     protected function buildSelectSql()
