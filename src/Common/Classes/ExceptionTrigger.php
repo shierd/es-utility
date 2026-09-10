@@ -44,7 +44,7 @@ class ExceptionTrigger implements TriggerInterface
 
     protected function doTrigger($trigger, $eMsg = [])
     {
-        trace($eMsg, 'error', $trigger);
+        trace(json_encode($eMsg, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE), 'error', $trigger);
         unset($eMsg['trace']);
         $eMsg['trigger'] = $trigger;
         if (\Swoole\Coroutine::getCid() >= 0) {
