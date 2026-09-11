@@ -82,11 +82,23 @@ class Openssl
         $crypto = $decrypt = '';
         $func = "openssl_{$type}_decrypt";
         $key = "_{$type}Key";
-        foreach (str_split($this->urlsafeB64decode($data), 128) as $chunk) {
+        // 密文块大小随密钥位数变化，1024位为128，2048位为256，硬编码会导致高位数密钥切块错误
+        $blockSize = $this->blockSize($this->$key);
+        foreach (str_split($this->urlsafeB64decode($data), $blockSize) as $chunk) {
             $func ($chunk, $decrypt, $this->$key);
             $crypto .= $decrypt;
         }
         return $crypto;
+    }
+
+    /**
+     * 单块密文字节数 = 密钥位数 / 8
+     * @param resource|\OpenSSLAsymmetricKey $key
+     */
+    protected function blockSize($key)
+    {
+        $detail = $key ? openssl_pkey_get_details($key) : null;
+        return empty($detail['bits']) ? 128 : intval($detail['bits'] / 8);
     }
 
     //加密码时把特殊符号替换成URL可以带的内容
