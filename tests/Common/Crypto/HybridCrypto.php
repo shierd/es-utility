@@ -3,6 +3,7 @@
 namespace Tests\Common\Crypto;
 
 use EasySwoole\Http\Request;
+use EasySwoole\Http\Message\Stream;
 use PHPUnit\Framework\TestCase;
 use WonderGame\EsUtility\Common\Crypto\HybridCrypto as HybridCryptoService;
 use WonderGame\EsUtility\Common\Crypto\RsaCrypto;
@@ -86,6 +87,22 @@ class HybridCrypto extends TestCase
         $this->assertSame($origin, $plain);
         $this->assertSame('1001', $request->getQueryParams()['id']);
         $this->assertArrayNotHasKey('key', $request->getQueryParams());
+    }
+
+    public function testDecryptJsonBody()
+    {
+        // 模拟 application/json 请求：body为原始JSON，parsedBody为空
+        $origin = ['username' => 'bob', 'n' => 7];
+        $payload = $this->encryptPayload($origin);
+
+        $request = new Request();
+        $request->withMethod('POST');
+        $request->withBody(new Stream(json_encode($payload)));
+
+        $plain = HybridCryptoService::getInstance()->decrypt($request);
+
+        $this->assertSame($origin, $plain);
+        $this->assertSame('bob', $request->getParsedBody('username'));
     }
 
     public function testNotEncryptedPassThrough()

@@ -44,7 +44,7 @@ class HybridCrypto
     public function decrypt(Request $request, array $options = [])
     {
         $isGet = strtoupper($request->getMethod()) === 'GET';
-        $params = $isGet ? $request->getQueryParams() : $request->getParsedBody();
+        $params = $isGet ? $request->getQueryParams() : $this->parsedBody($request);
         $params = is_array($params) ? $params : [];
 
         // 负载不齐全，视为未加密请求，原样放行
@@ -143,5 +143,27 @@ class HybridCrypto
     protected function hasPayload(array $params)
     {
         return ! empty($params['key']) && ! empty($params['iv']) && ! empty($params['data']);
+    }
+
+    /**
+     * 获取POST等请求的body参数。
+     *
+     * EasySwoole仅对 x-www-form-urlencoded / multipart 自动解析到parsedBody，
+     * application/json 需从原始body中json_decode兜底。
+     */
+    protected function parsedBody(Request $request)
+    {
+        $parsed = $request->getParsedBody();
+        if (is_array($parsed) && $parsed) {
+            return $parsed;
+        }
+
+        $raw = (string)$request->getBody();
+        if ($raw === '') {
+            return [];
+        }
+
+        $json = json_decode($raw, true);
+        return is_array($json) ? $json : [];
     }
 }
