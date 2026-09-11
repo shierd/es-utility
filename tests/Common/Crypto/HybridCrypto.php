@@ -33,6 +33,7 @@ class HybridCrypto extends TestCase
 
     /**
      * 模拟前端加密，生成 { key, iv, data, timestamp } 负载
+     * 前端对key/iv的hex字符串做RSA加密，而非原始字节
      */
     protected function encryptPayload(array $data, $timestamp = null): array
     {
@@ -41,8 +42,9 @@ class HybridCrypto extends TestCase
 
         $ciphertext = openssl_encrypt(json_encode($data), 'aes-256-cbc', $aesKey, OPENSSL_RAW_DATA, $aesIV);
 
-        openssl_public_encrypt($aesKey, $encKey, self::$publicKey, OPENSSL_PKCS1_PADDING);
-        openssl_public_encrypt($aesIV, $encIV, self::$publicKey, OPENSSL_PKCS1_PADDING);
+        // RSA加密的是hex字符串
+        openssl_public_encrypt(bin2hex($aesKey), $encKey, self::$publicKey, OPENSSL_PKCS1_PADDING);
+        openssl_public_encrypt(bin2hex($aesIV), $encIV, self::$publicKey, OPENSSL_PKCS1_PADDING);
 
         return [
             'key' => base64_encode($encKey),

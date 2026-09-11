@@ -89,6 +89,10 @@ class HybridCrypto
             throw new HttpParamException('密文有误', Code::CODE_UNAUTHORIZED);
         }
 
+        // 前端RSA加密的是hex字符串(key=64字符,iv=32字符)，需转回原始字节
+        $aesKey = strlen($aesKey) === 64 ? hex2bin($aesKey) : $aesKey;
+        $aesIV = strlen($aesIV) === 32 ? hex2bin($aesIV) : $aesIV;
+
         // data为base64编码的密文，OPENSSL_RAW_DATA要求传入原始二进制，需先解码
         $ciphertext = base64_decode($payload['data'] ?? '', true);
         if ($ciphertext === false) {
