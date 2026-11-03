@@ -33,6 +33,26 @@ class HybridCrypto extends TestCase
     }
 
     /**
+     * 模拟前端密文编码：标准base64 → 去掉 `=` 并转base64url → 前4位、后3位加混淆字符
+     */
+    protected function encodeCiphertext(string $ciphertext): string
+    {
+        $b64url = rtrim(strtr(base64_encode($ciphertext), '+/', '-_'), '=');
+
+        return $this->randomStr(4) . $b64url . $this->randomStr(3);
+    }
+
+    protected function randomStr(int $len): string
+    {
+        $chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+        $str = '';
+        for ($i = 0; $i < $len; $i++) {
+            $str .= $chars[random_int(0, strlen($chars) - 1)];
+        }
+        return $str;
+    }
+
+    /**
      * 模拟前端加密，生成 { key, iv, data, timestamp } 负载
      * 前端对key/iv的hex字符串做RSA加密，而非原始字节
      */
@@ -48,9 +68,9 @@ class HybridCrypto extends TestCase
         openssl_public_encrypt(bin2hex($aesIV), $encIV, self::$publicKey, OPENSSL_PKCS1_PADDING);
 
         return [
-            'key' => base64_encode($encKey),
-            'iv' => base64_encode($encIV),
-            'data' => base64_encode($ciphertext),
+            'key' => $this->encodeCiphertext($encKey),
+            'iv' => $this->encodeCiphertext($encIV),
+            'data' => $this->encodeCiphertext($ciphertext),
             'timestamp' => $timestamp ?? intval(microtime(true) * 1000),
         ];
     }
@@ -136,7 +156,18 @@ class HybridCrypto extends TestCase
     public function testInvalidCiphertext()
     {
         $payload = $this->encryptPayload(['a' => 1]);
-        $payload['data'] = base64_encode('not-a-valid-aes-ciphertext');
+        $payload['data'] = $this->encodeCiphertext('not-a-valid-aes-ciphertext');
+        $request = $this->makeRequest($payload);
+
+        $this->expectException(HttpParamException::class);
+        HybridCryptoService::getInstance()->decrypt($request);
+    }
+
+    public function testDataTooShort()
+    {
+        $payload = $this->encryptPayload(['a' => 1]);
+        // 混淆前后缀共7位，不足7位视为非法
+        $payload['data'] = 'abc123';
         $request = $this->makeRequest($payload);
 
         $this->expectException(HttpParamException::class);

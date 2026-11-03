@@ -29,6 +29,12 @@ class HybridCrypto
     const PAYLOAD_FIELDS = ['key', 'iv', 'data', 'timestamp'];
 
     /**
+     * 密文混淆规则：前面加4位、后面加3位无规则字符
+     */
+    const OBFUSCATE_PREFIX_LEN = 4;
+    const OBFUSCATE_SUFFIX_LEN = 3;
+
+    /**
      * 解密请求
      *
      * 从请求中取出加密负载(GET取query，其余取body)，解密后将明文合并回请求参数，
@@ -83,8 +89,9 @@ class HybridCrypto
     {
         $rsa = RsaCrypto::getInstance();
 
-        $aesKey = $rsa->privateDecrypt($payload['key'] ?? '');
-        $aesIV = $rsa->privateDecrypt($payload['iv'] ?? '');
+        // key/iv/data 均为 base64url + 首尾混淆，需先统一还原成标准base64
+        $aesKey = $rsa->privateDecrypt($this->fromBase64Url($payload['key'] ?? ''));
+        $aesIV = $rsa->privateDecrypt($this->fromBase64Url($payload['iv'] ?? ''));
         if ($aesKey === '' || $aesIV === '') {
             throw new HttpParamException('密文有误', Code::CODE_UNAUTHORIZED);
         }
@@ -93,8 +100,8 @@ class HybridCrypto
         $aesKey = strlen($aesKey) === 64 ? hex2bin($aesKey) : $aesKey;
         $aesIV = strlen($aesIV) === 32 ? hex2bin($aesIV) : $aesIV;
 
-        // data为base64编码的密文，OPENSSL_RAW_DATA要求传入原始二进制，需先解码
-        $ciphertext = base64_decode($payload['data'] ?? '', true);
+        // data为base64url编码的密文(带前后混淆字符)，需先还原成标准base64再解码
+        $ciphertext = base64_decode($this->fromBase64Url($payload['data'] ?? ''), true);
         if ($ciphertext === false) {
             throw new HttpParamException('密文有误', Code::CODE_UNAUTHORIZED);
         }
@@ -110,6 +117,39 @@ class HybridCrypto
         }
 
         return $data;
+    }
+
+    /**
+     * 前端密文还原为标准base64：
+     * 去掉前4位、后3位混淆字符 → `-`/`_` 还原为 `+`/`/` → 补 `=` 填充
+     *
+     * @param string $data 前端传来的密文
+     * @return string 标准base64字符串
+     * @throws HttpParamException 长度不足或base64url长度非法
+     */
+    protected function fromBase64Url($data)
+    {
+        $data = (string)$data;
+        $total = self::OBFUSCATE_PREFIX_LEN + self::OBFUSCATE_SUFFIX_LEN;
+
+        if (strlen($data) < $total) {
+            throw new HttpParamException('密文有误', Code::CODE_UNAUTHORIZED);
+        }
+
+        $b64 = substr($data, self::OBFUSCATE_PREFIX_LEN, strlen($data) - $total);
+        $b64 = strtr($b64, '-_', '+/');
+
+        // base64长度 mod 4 只可能是 0 / 2 / 3（1 为非法长度）
+        switch (strlen($b64) % 4) {
+            case 0:
+                return $b64;
+            case 2:
+                return $b64 . '==';
+            case 3:
+                return $b64 . '=';
+            default:
+                throw new HttpParamException('密文有误', Code::CODE_UNAUTHORIZED);
+        }
     }
 
     /**
