@@ -129,6 +129,10 @@ trait有哪些坑
 - [trait冲突解决](https://www.php.net/manual/zh/language.oop5.traits.php)
 - [XlsWriter](https://xlswriter-docs.viest.me/zh-cn)
 
+ ## Link
+
+此存储库的另一个版本：[basic-hub/es-core](https://github.com/basic-hub/es-core)  
+
 ## 感谢
 
 [<img src="https://resources.jetbrains.com/storage/products/company/brand/logos/jetbrains.png" alt="JetBrains Logo (Main) logo." height="50" />](https://www.jetbrains.com/)
