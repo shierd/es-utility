@@ -33,6 +33,8 @@
     "easyswoole/http-client": "^1.5",
     "alibabacloud/dm-20151123": "^1.1",
     "tencentcloud/ses": "^3.0",
+    "aws/aws-sdk-php": "3.337.3",
+    "smi2/phpclickhouse": "1.5.x",
     "easyswoole/oss": "^1.1",
     "alibabacloud/dysmsapi-20170525": "^2.0",
     "tencentcloud/sms": "^3.0",
@@ -46,8 +48,7 @@
     "ext-simplexml": "*",
     "ext-libxml": "*",
     "ext-curl": "*",
-    "ext-openssl": "*",
-    "smi2/phpclickhouse": "1.5.x"
+    "ext-openssl": "*"
   },
   "autoload": {
     "psr-4": {
@@ -57,5 +58,12 @@
   },
   "require-dev": {
     "easyswoole/phpunit": "^1.1"
+  },
+  "config": {
+    "policy": {
+      "advisories": {
+        "ignore-id": ["PKSA-4t1p-xpk2-nsss", "PKSA-dxyf-6n16-t87m"]
+      }
+    }
   }
 }
